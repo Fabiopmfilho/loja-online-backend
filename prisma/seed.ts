@@ -11,16 +11,13 @@ async function main() {
     categories: await prisma.category.count(),
     departments: await prisma.department.count(),
   });
+
+  // Deletar dados anteriores
   await prisma.product.deleteMany();
-  await prisma.department.deleteMany();
   await prisma.category.deleteMany();
+  await prisma.department.deleteMany();
 
   console.log('🧹 Dados antigos removidos');
-  console.log('Depois de deletar:', {
-    products: await prisma.product.count(),
-    categories: await prisma.category.count(),
-    departments: await prisma.department.count(),
-  });
 
   // Criar Departments
   const departments = await Promise.all([
@@ -61,7 +58,7 @@ async function main() {
     }),
   ]);
 
-  console.log('✅ Departments criados');
+  console.log(`✅ ${departments.length} Departments criados`);
 
   // Criar Categories
   const categories = await Promise.all([
@@ -188,7 +185,7 @@ async function main() {
     }),
   ]);
 
-  console.log('✅ Categories criadas');
+  console.log(`✅ ${categories.length} Categories criadas`);
 
   // Criar Products
   const products = [
@@ -583,27 +580,54 @@ async function main() {
     },
   ];
 
-  try {
-    for (const dep of departments) {
-      await prisma.department.create({ data: dep });
-    }
-    console.log(`✅ ${categories.length} Categories criadas`);
+  // Criar produtos um por um com melhor tratamento de erros
+  console.log(`🚀 Iniciando criação de ${products.length} produtos...`);
 
-    for (const prod of products) {
-      try {
-        await prisma.product.create({ data: prod });
-      } catch (e) {
-        console.error(`❌ Erro ao criar produto ${prod.name}:`, e);
+  let productsCreated = 0;
+  for (let i = 0; i < products.length; i++) {
+    const product = products[i];
+    try {
+      const created = await prisma.product.create({ data: product });
+      productsCreated++;
+      console.log(
+        `✅ Produto ${i + 1}/${products.length}: ${product.name} - ID: ${created.id}`,
+      );
+    } catch (error) {
+      console.error(
+        `❌ Erro ao criar produto ${i + 1} (${product.name}):`,
+        error,
+      );
+
+      // Log adicional para debugging
+      if (error instanceof Error) {
+        console.error('Detalhes do erro:', error.message);
+      }
+
+      // Verificar se a categoria existe
+      const categoryExists = await prisma.category.findUnique({
+        where: { id: product.categoryId },
+      });
+
+      if (!categoryExists) {
+        console.error(
+          `❌ Categoria ${product.categoryId} não encontrada para o produto ${product.name}`,
+        );
       }
     }
-    console.log(`✅ ${products.length} Products processados`);
-  } catch (err) {
-    console.error('❌ Erro geral durante o seed:', err);
-  } finally {
-    await prisma.$disconnect();
-    console.log('🔌 Conexão com o banco encerrada');
   }
 
+  console.log(
+    `✅ ${productsCreated} produtos criados com sucesso de ${products.length} tentativas`,
+  );
+
+  // Verificação final
+  const finalCount = {
+    departments: await prisma.department.count(),
+    categories: await prisma.category.count(),
+    products: await prisma.product.count(),
+  };
+
+  console.log('📊 Contagem final:', finalCount);
   console.log('🎉 Seed concluído!');
 }
 
@@ -614,4 +638,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    console.log('🔌 Conexão com o banco encerrada');
   });
